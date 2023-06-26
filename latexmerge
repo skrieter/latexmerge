@@ -20,7 +20,7 @@
 # See <https://github.com/skrieter/latexmerge> for further information.
 # -----------------------------------------------------------------------------
 
-tex_file=$1
+tex_file="$1"
 
 if [ $# -gt 1 ] ; then
     bibtool=$2
@@ -34,14 +34,14 @@ temp_path="${out_path}/temp"
 mkdir ${out_path}
 mkdir ${temp_path}
 
-if pdflatex -draftmode -halt-on-error -shell-escape -interaction=batchmode -output-directory=${temp_path} ${tex_file} > /dev/null ; then
+if pdflatex -draftmode -halt-on-error -shell-escape -interaction=batchmode -output-directory=${temp_path} "${tex_file}" > /dev/null ; then
 	echo "compiled original"
 else
 	echo "could not compile original" >&2
 	exit 1
 fi
 
-if sed -n -E "s/^File: (.*) Graphic file .*$/\1/p" ${temp_path}/${tex_file}.log > ${temp_path}/imgs ; then
+if sed -n -E "s/^File: (.*) Graphic file .*$/\1/p" "${temp_path}/${tex_file}.log" > ${temp_path}/imgs ; then
 	echo "found image files"
 else
 	echo "could not find immage files" >&2
@@ -50,13 +50,13 @@ fi
 
 case ${bibtool} in
   bibtex)
-    if bibtex -terse ${temp_path}/${tex_file}.aux > /dev/null ; then
+    if bibtex -terse "${temp_path}/${tex_file}.aux" > /dev/null ; then
 		echo "run bibtex"
 	else
 		echo "could not run bibtex" >&2
 		exit 1
 	fi
-	if latexpand --empty-comments --expand-usepackage --expand-bbl ${temp_path}/${tex_file}.bbl -o ${temp_path}/${tex_file}.tex ${tex_file}.tex &> /dev/null ; then
+	if latexpand --empty-comments --expand-usepackage --expand-bbl "${temp_path}/${tex_file}.bbl" -o "${temp_path}/${tex_file}.tex" "${tex_file}.tex" &> /dev/null ; then
 		echo "run latexpand"
 	else
 		echo "could not run latexpand" >&2
@@ -64,13 +64,13 @@ case ${bibtool} in
 	fi
     ;;
   biber)
-    if biber ${temp_path}/${tex_file}.aux  > /dev/null ; then
+    if biber "${temp_path}/${tex_file}.aux"  > /dev/null ; then
 		echo "run biber"
 	else
 		echo "could not run biber" >&2
 		exit 1
 	fi
-	if latexpand --empty-comments --expand-usepackage --biber ${temp_path}/${tex_file}.bbl -o ${temp_path}/${tex_file}.tex ${tex_file}.tex &> /dev/null ; then
+	if latexpand --empty-comments --expand-usepackage --biber "${temp_path}/${tex_file}.bbl" -o "${temp_path}/${tex_file}.tex" "${tex_file}.tex" &> /dev/null ; then
 		echo "run latexpand"
 	else
 		echo "could not run latexpand" >&2
@@ -93,14 +93,14 @@ do
 done
 echo "moved images"
 
-if sed -E 's/(\\includegraphics\s*(\[.*\])?)\s*\{(.+\/)*(.*)\}/\1{\4}/' ${temp_path}/${tex_file}.tex >> ${temp_path}/${tex_file}2.tex ; then
+if sed -E 's/(\\includegraphics\s*(\[.*\])?)\s*\{(.+\/)*(.*)\}/\1{\4}/' "${temp_path}/${tex_file}.tex" >> "${temp_path}/${tex_file}_2.tex" ; then
 	echo "replaced image paths in includegraphics"
 else
 	echo "could not replace image paths in includegraphics" >&2
 	exit 1
 fi
 
-if sed -E 's/(\\graphicspath[\s{[]?)/%\1/' ${temp_path}/${tex_file}2.tex >> ${out_path}/${tex_file}.tex ; then
+if sed -E 's/(\\graphicspath[\s{[]?)/%\1/' "${temp_path}/${tex_file}_2.tex" >> "${out_path}/${tex_file}.tex" ; then
 	echo "disabled graphicspath command"
 else
 	echo "could not disable graphicspath command" >&2
@@ -111,11 +111,11 @@ rm -r ${temp_path}
 
 cd ${out_path}
 
-if latexmk -quiet -silent -pdf -pdflatex="pdflatex -shell-escape -interaction=batchmode -halt-on-error" ${tex_file} >& /dev/null ; then
+if latexmk -quiet -silent -pdf -pdflatex="pdflatex -shell-escape -interaction=batchmode -halt-on-error" "${tex_file}" >& /dev/null ; then
 	echo "compiled merged file"
 else
 	echo "could not compile merged file" >&2
-	cat ${tex_file}.log | grep "Error"
+	cat "${tex_file}.log" | grep "Error"
 	exit 1
 fi
-latexmk -c ${tex_file} >& /dev/null
+latexmk -c "${tex_file}" >& /dev/null
