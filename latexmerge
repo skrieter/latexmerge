@@ -1,4 +1,5 @@
 #! /bin/bash
+
 # -----------------------------------------------------------------------------
 # latexmerge - A program mergeing a complex latex document with sub files
 #              into a single file and copying all required to the same folder
@@ -19,103 +20,125 @@
 #
 # See <https://github.com/skrieter/latexmerge> for further information.
 # -----------------------------------------------------------------------------
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+NOCOLOR='\033[0m'
 
-tex_file="$1"
+tex_file=$1
 
 if [ $# -gt 1 ] ; then
     bibtool=$2
 else
-	bibtool="bibtex"
+    bibtool="bibtex"
 fi
 
 out_path="merged"
 temp_path="${out_path}/temp"
 
-mkdir ${out_path}
-mkdir ${temp_path}
+rm -r "${out_path}" >& /dev/null
 
-if pdflatex -draftmode -halt-on-error -shell-escape -interaction=batchmode -output-directory=${temp_path} "${tex_file}" > /dev/null ; then
-	echo "compiled original"
+mkdir "${out_path}" >& /dev/null
+
+latexmk -C "${tex_file}" >& /dev/null
+
+#-output-directory=${temp_path}
+if pdflatex -draftmode -halt-on-error -shell-escape -interaction=batchmode  -cnf-line=max_print_line=1000 "${tex_file}" >&2 > /dev/null ; then
+    echo -e "${GREEN}compiled original${NOCOLOR}"
 else
-	echo "could not compile original" >&2
+	echo -e "${RED}could not compile original${NOCOLOR}" >&2
 	exit 1
 fi
 
-if sed -n -E "s/^File: (.*) Graphic file .*$/\1/p" "${temp_path}/${tex_file}.log" > ${temp_path}/imgs ; then
-	echo "found image files"
+if sed -n -E "s/^File: (.*) Graphic .*$/\1/p" ${tex_file}.log > imgs ; then
+	echo -e "${GREEN}found image files${NOCOLOR}"
 else
-	echo "could not find immage files" >&2
+	echo -e "${RED}could not find image files${NOCOLOR}" >&2
 	exit 1
 fi
 
 case ${bibtool} in
   bibtex)
-    if bibtex -terse "${temp_path}/${tex_file}.aux" > /dev/null ; then
-		echo "run bibtex"
+    if bibtex -terse "${tex_file}.aux" > /dev/null ; then
+		echo -e "${GREEN}run bibtex${NOCOLOR}"
+		if latexpand --empty-comments --expand-usepackage --expand-bbl "${tex_file}.bbl" -o "${tex_file}_expand.tex" "${tex_file}.tex" &> /dev/null ; then
+			echo -e "${GREEN}run latexpand${NOCOLOR}"
+		else
+			echo -e "${RED}could not run latexpand${NOCOLOR}" >&2
+			exit 1
+		fi
 	else
-		echo "could not run bibtex" >&2
-		exit 1
-	fi
-	if latexpand --empty-comments --expand-usepackage --expand-bbl "${temp_path}/${tex_file}.bbl" -o "${temp_path}/${tex_file}.tex" "${tex_file}.tex" &> /dev/null ; then
-		echo "run latexpand"
-	else
-		echo "could not run latexpand" >&2
-		exit 1
+		echo -e "${RED}could not run bibtex${NOCOLOR}" >&2
+		if latexpand --empty-comments --expand-usepackage -o "${tex_file}_expand.tex" "${tex_file}.tex" &> /dev/null ; then
+			echo -e "${GREEN}run latexpand${NOCOLOR}"
+		else
+			echo -e "${RED}could not run latexpand${NOCOLOR}" >&2
+			exit 1
+		fi
 	fi
     ;;
   biber)
-    if biber "${temp_path}/${tex_file}.aux"  > /dev/null ; then
-		echo "run biber"
+    if biber "${tex_file}.aux"  > /dev/null ; then
+		echo -e "${GREEN}run biber${NOCOLOR}"
+		if latexpand --empty-comments --expand-usepackage --biber "${tex_file}.bbl" -o "${tex_file}_expand.tex" "${tex_file}.tex" &> /dev/null ; then
+			echo -e "${GREEN}run latexpand${NOCOLOR}"
+		else
+			echo -e "${RED}could not run latexpand${NOCOLOR}" >&2
+			exit 1
+		fi
 	else
-		echo "could not run biber" >&2
-		exit 1
-	fi
-	if latexpand --empty-comments --expand-usepackage --biber "${temp_path}/${tex_file}.bbl" -o "${temp_path}/${tex_file}.tex" "${tex_file}.tex" &> /dev/null ; then
-		echo "run latexpand"
-	else
-		echo "could not run latexpand" >&2
-		exit 1
+		echo -e "${RED}could not run biber${NOCOLOR}" >&2
+		if latexpand --empty-comments --expand-usepackage -o "${tex_file}_expand.tex" "${tex_file}.tex" &> /dev/null ; then
+			echo -e "${GREEN}run latexpand${NOCOLOR}"
+		else
+			echo -e "${RED}could not run latexpand${NOCOLOR}" >&2
+			exit 1
+		fi
 	fi
     ;;
   *)
-    echo "unkown bibtool ${bibtool}" >&2
+    echo -e "${RED}unkown bibtool ${bibtool}${NOCOLOR}" >&2
     exit 1
     ;;
 esac
 
-readarray -t tex_imgs < ${temp_path}/imgs
+cp "${tex_file}.bbl" "${out_path}/${tex_file}.bbl" &> /dev/null
+
+readarray -t tex_imgs < imgs
 length=${#tex_imgs[@]}
 for (( j=0; j<length; j++ ));
 do
 	img_path="${tex_imgs[$j]}"
 	img_name=$(basename -- "$img_path")
-	cp $img_path "${out_path}/$img_name" &> /dev/null
+	cp "$img_path" "${out_path}/$img_name" &> /dev/null
 done
-echo "moved images"
+echo -e "${GREEN}moved images${NOCOLOR}"
 
-if sed -E 's/(\\includegraphics\s*(\[.*\])?)\s*\{(.+\/)*(.*)\}/\1{\4}/' "${temp_path}/${tex_file}.tex" >> "${temp_path}/${tex_file}_2.tex" ; then
-	echo "replaced image paths in includegraphics"
+if sed -E 's/(\\includegraphics\s*(\[.*\])?)\s*\{(.+\/)*(.*)\}/\1{\4}/' "${tex_file}_expand.tex" > ${tex_file}_expand2.tex ; then
+	echo -e "${GREEN}replaced image paths in includegraphics${NOCOLOR}"
 else
-	echo "could not replace image paths in includegraphics" >&2
+	echo -e "${RED}could not replace image paths in includegraphics${NOCOLOR}" >&2
 	exit 1
 fi
 
-if sed -E 's/(\\graphicspath[\s{[]?)/%\1/' "${temp_path}/${tex_file}_2.tex" >> "${out_path}/${tex_file}.tex" ; then
-	echo "disabled graphicspath command"
+if sed -E 's/(\\graphicspath[\s{[]?)/%\1/' "${tex_file}_expand2.tex" > "${out_path}/paper.tex" ; then
+	echo -e "${GREEN}disabled graphicspath command${NOCOLOR}"
 else
-	echo "could not disable graphicspath command" >&2
+	echo -e "${RED}could not disable graphicspath command${NOCOLOR}" >&2
 	exit 1
 fi
 
-rm -r ${temp_path}
+rm "${tex_file}_expand.tex"
+rm "${tex_file}_expand2.tex"
 
 cd ${out_path}
 
-if latexmk -quiet -silent -pdf -pdflatex="pdflatex -shell-escape -interaction=batchmode -halt-on-error" "${tex_file}" >& /dev/null ; then
-	echo "compiled merged file"
+zip sources.zip *
+
+if latexmk -quiet -silent -pdf -pdflatex="pdflatex -shell-escape -interaction=batchmode -halt-on-error" paper >& /dev/null ; then
+	echo -e "${GREEN}compiled merged file${NOCOLOR}"
 else
-	echo "could not compile merged file" >&2
-	cat "${tex_file}.log" | grep "Error"
+	echo -e "${RED}could not compile merged file${NOCOLOR}" >&2
+	cat paper.log | grep "Error"
 	exit 1
 fi
-latexmk -c "${tex_file}" >& /dev/null
+latexmk -c paper >& /dev/null
