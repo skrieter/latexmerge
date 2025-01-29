@@ -76,7 +76,7 @@ bib_mode=${bibtool}
 case ${bibtool} in
   bibtex)
 	echo -e -n "${GREEN}Running bibtex...${NOCOLOR}"
-    bibtex -terse "${tex_file}.aux" > /dev/null 2>> ${log_file}
+    bibtex -terse "${tex_file}.aux" > ${log_file} 2>> /dev/null
     ;;
   biber)
 	echo -e -n "${GREEN}Running biber...${NOCOLOR}"
@@ -98,13 +98,13 @@ fi
 echo -e -n "${GREEN}Running latexpand...${NOCOLOR}"
 case ${bib_mode} in
   bibtex)
-	latexpand --empty-comments --expand-usepackage --expand-bbl "${tex_file}.bbl" -o "${out_path}/${tex_file}_expand.tex" "${tex_file}.tex" &> /dev/null
+	latexpand --empty-comments --expand-usepackage --expand-bbl "${tex_file}.bbl" -o "${out_path}/${tex_file}_expand.tex" "${tex_file}.tex" > /dev/null 2>> ${log_file}
     ;;
   biber)
-	latexpand --empty-comments --expand-usepackage --biber "${tex_file}.bbl" -o "${out_path}/${tex_file}_expand.tex" "${tex_file}.tex" &> /dev/null
+	latexpand --empty-comments --expand-usepackage --biber "${tex_file}.bbl" -o "${out_path}/${tex_file}_expand.tex" "${tex_file}.tex" > /dev/null 2>> ${log_file}
 	;;
   none)
-	latexpand --empty-comments --expand-usepackage -o "${out_path}/${tex_file}_expand.tex" "${tex_file}.tex" &> /dev/null
+	latexpand --empty-comments --expand-usepackage -o "${out_path}/${tex_file}_expand.tex" "${tex_file}.tex" > /dev/null 2>> ${log_file}
     ;;
   *)
 	echo -e "${RED}fail${NOCOLOR}" >&2
@@ -114,29 +114,43 @@ case ${bib_mode} in
 esac
 print_output $?
 
-echo -e -n "${GREEN}Running bibexport...${NOCOLOR}"
-bibexport -t -o "${out_path}/literature.bib" "${tex_file}" > /dev/null 2>> ${log_file}
-print_output $?
+case ${bib_mode} in
+  none)
+	echo -e -n "${GREEN}Running bibexport...${NOCOLOR}"
+	bibexport -t -o "${out_path_src}/literature.bib" "${tex_file}" > /dev/null 2>> ${log_file}
+	print_output $?
+	echo -e -n "${GREEN}Replacing bibliography...${NOCOLOR}"
+	LC_CTYPE=C sed -E 's/(\\bibliography\s*(\[.*\])?)\s*\{.*\}/\1{literature.bib}/' "${out_path}/${tex_file}_expand.tex" > "${out_path}/${tex_file}_expand2.tex" 2>> ${log_file}
+	print_output $?
+	rm "${out_path}/${tex_file}_expand.tex"
+	mv "${out_path}/${tex_file}_expand2.tex" "${out_path}/${tex_file}_expand.tex"
+    ;;
+esac
 
-cp "${tex_file}.bbl" "${out_path_src}/${out_name}.bbl" &> /dev/null
-
+echo -e -n "${GREEN}Copying image files...${NOCOLOR}"
 while IFS= read -r line; do tex_imgs+=($line) ; done < imgs
-
 length=${#tex_imgs[@]}
 for (( j=0; j<length; j++ ));
 do
 	img_path="${tex_imgs[$j]}"
 	img_name=$(basename -- "$img_path")
-	cp "$img_path" "${out_path_src}/$img_name" &> /dev/null
+	cp "$img_path" "${out_path_src}/$img_name" > /dev/null 2>> "${log_file}"
+	if [ $? -ne 0 ]; then
+		echo -e "${RED}fail${NOCOLOR}" >&2
+		cat ${log_file}
+		exit 1
+	fi
 done
-echo -e "${GREEN}moved images${NOCOLOR}"
+echo -e "${GREEN}OK${NOCOLOR}"
 
 echo -e -n "${GREEN}Replacing image paths in includegraphics...${NOCOLOR}"
 LC_CTYPE=C sed -E 's/(\\includegraphics\s*(\[.*\])?)\s*\{(.+\/)*(.*)\}/\1{\4}/' "${out_path}/${tex_file}_expand.tex" > "${out_path}/${tex_file}_expand2.tex" 2>> ${log_file}
 print_output $?
+rm "${out_path}/${tex_file}_expand.tex"
+mv "${out_path}/${tex_file}_expand2.tex" "${out_path}/${tex_file}_expand.tex"
 
 echo -e -n "${GREEN}Disabling graphicspath command...${NOCOLOR}"
-LC_CTYPE=C sed -E 's/(\\graphicspath[\s{[]?)/%\1/' "${out_path}/${tex_file}_expand2.tex" > "${out_path_src}/${out_name}.tex" 2>> ${log_file}
+LC_CTYPE=C sed -E 's/(\\graphicspath[\s{[]?)/%\1/' "${out_path}/${tex_file}_expand.tex" > "${out_path_src}/${out_name}.tex" 2>> ${log_file}
 print_output $?
 
 latexmk -C "${tex_file}" >& /dev/null
@@ -154,6 +168,7 @@ mv "${out_name}.pdf" "../${out_pdf}"
 mv "${out_name}.bbl" "../"
 latexmk -C "${out_name}" >& /dev/null
 cd ..
-#mv "${out_name}.bbl" "${out_src}"
 
-zip sources.zip Source pdf
+echo -e -n "${GREEN}Creating zip file...${NOCOLOR}"
+zip sources.zip Source pdf  > /dev/null 2>> "../${log_file}"
+print_output $?
